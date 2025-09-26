@@ -103,22 +103,55 @@
 function quotePlus(s){ return encodeURIComponent(s); }
 
 function getDomainInfo(domain, brandName=null){
+  // Heurística mejorada para extraer registered_domain y brand_name.
+  // - Si el TLD es ccTLD (último label con longitud 2, p.ej. "ru", "uk"),
+  //   y existen al menos 3 labels, tomamos registered_domain = last 3 labels
+  //   y brand = etiqueta anterior a esos 3.
+  // - En caso contrario (dominio normal tipo example.com), registered_domain = last 2 labels.
   try{
     if(!domain.includes('://')) domain = 'http://' + domain;
     const u = new URL(domain);
     const host = u.hostname;
     const parts = host.split('.').filter(Boolean);
+
+    // default fallbacks
     let registered = host;
-    if(parts.length >= 2){
+    let brand = null;
+
+    if(parts.length >= 3 && parts[parts.length-1].length === 2){
+      // probable ccTLD (co.uk, com.ru, etc.) -> usar last 3 como registered_domain
+      registered = parts.slice(-3).join('.');
+      // brand será la etiqueta justo antes del public-suffix-like: parts[-4] si existe, sino parts[0]
+      if(parts.length >= 4){
+        brand = parts[parts.length - 4];
+      } else {
+        // ejemplo: example.co.uk -> parts = [example, co, uk] => brand = example
+        brand = parts[0];
+      }
+    } else if(parts.length >= 2){
+      // dominio normal: tomar last 2 labels como registered_domain
       registered = parts.slice(-2).join('.');
+      // brand: la etiqueta anterior a los dos últimos, o el primer label si no existe
+      if(parts.length >= 3){
+        brand = parts[parts.length - 3];
+      } else {
+        brand = parts[0];
+      }
+    } else {
+      // casos raros (localhost, single-label)
+      registered = host;
+      brand = host;
     }
-    // si brandName provisto, usar; si no, tomar el dominio sin TLD simple
-    const brand = brandName ? brandName : (parts.length ? parts[parts.length-2] : host);
-    return { hostname: host, registered_domain: registered, brand_name: brand };
+
+    // si el usuario pasó brandName explícito, respetarlo
+    const effectiveBrand = brandName ? brandName : brand;
+
+    return { hostname: host, registered_domain: registered, brand_name: effectiveBrand };
   }catch(e){
     return { hostname: domain, registered_domain: domain, brand_name: brandName || domain };
   }
 }
+
 
 
 const PHISH_SYNONYMS = {
@@ -529,3 +562,4 @@ document.getElementById('downloadHtml').addEventListener('click', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
