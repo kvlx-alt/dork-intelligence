@@ -1,0 +1,531 @@
+
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Dork Intelligence - kvzlx</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  body { background:#0f1720; color:#e6eef8; }
+  .card, .accordion-item { background:#0b1220; border-color:#16202b; }
+  .form-label { color:#cfe8ff; }
+  .accordion-button::after{
+    content:'▸'; font-size:1.05rem; transform:rotate(0deg); transition:transform .18s ease;
+  }
+  .accordion-button:not(.collapsed)::after{ transform:rotate(90deg); }
+  code { color:#b8e0ff; background:transparent; font-size:.95rem; }
+  .btn-ghost { background:transparent; border:1px solid rgba(102,178,255,.12); color:#66b2ff; }
+  .small-muted { color:#98b7d6; font-size:.9rem; }
+  .form-control, .form-select { background:#071021; color:#dff0ff; border:1px solid #163041; }
+  .list-group-item { background:transparent; border-color:#172433; color:#e6eef8; }
+  a.dork-link { color:#66b2ff; text-decoration:none; }
+  a.dork-link:hover { text-decoration:underline; }
+  .top-note { color:#9fc9ff; }
+    /* Cambiar color de los títulos de cada categoría */
+.accordion-button {
+  color: #4db6ff !important;   /* azul claro */
+}
+    .accordion-button:not(.collapsed) {
+  background-color: #122438;   /* fondo más oscuro */
+  color: #80e0ff !important;   /* cian */
+}
+</style>
+</head>
+<body>
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3">🔎 Google Dorks — kvzlx</h1>
+    <div class="small-muted">*****#####*****</div>
+  </div>
+
+  <div class="card p-3 mb-4">
+    <form id="dorkForm" class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Dominio objetivo <span class="text-info small-muted">(ej. tusitio.com)</span></label>
+        <input id="domain" class="form-control" placeholder="ej. tusitio.com" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Brand name (opcional)</label>
+        <input id="brand" class="form-control" placeholder="Tusitio (si quieres sobreescribir)">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Idioma</label>
+        <select id="lang" class="form-select">
+          <option value="es" selected>es</option>
+          <option value="en">en</option>
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Nivel typo (-t)</label>
+        <select id="typoLevel" class="form-select">
+          <option value="0">0 — off</option>
+          <option value="1" selected>1 — básico</option>
+          <option value="2">2 — homoglyphs</option>
+          <option value="3">3 — agresivo</option>
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Nivel sinónimos (-s)</label>
+        <select id="synLevel" class="form-select">
+          <option value="0">0 — off</option>
+          <option value="1" selected>1 — comunes</option>
+          <option value="2">2 — agresivo</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Exclusiones (-e) — separadas por espacios</label>
+        <input id="exclusions" class="form-control" placeholder="ej. example.com other.com">
+      </div>
+      <div class="col-12">
+        <label class="form-label">Cuentas sociales oficiales (-sa) — separadas por espacios</label>
+        <input id="socials" class="form-control" placeholder="ej. tusitio tusitio_oficial">
+      </div>
+
+      <div class="col-12 d-flex gap-2">
+        <button id="generateBtn" class="btn btn-primary">Generar dorks</button>
+        <button id="downloadHtml" type="button" class="btn btn-outline-info">Descargar HTML</button>
+        <button id="clearBtn" type="button" class="btn btn-ghost">Limpiar</button>
+        <div class="ms-auto small-muted align-self-center">Click en 🔎 abre Google en nueva pestaña</div>
+      </div>
+    </form>
+  </div>
+
+  <div id="outputArea"></div>
+</div>
+
+<script>
+
+function quotePlus(s){ return encodeURIComponent(s); }
+
+function getDomainInfo(domain, brandName=null){
+  try{
+    if(!domain.includes('://')) domain = 'http://' + domain;
+    const u = new URL(domain);
+    const host = u.hostname;
+    const parts = host.split('.').filter(Boolean);
+    let registered = host;
+    if(parts.length >= 2){
+      registered = parts.slice(-2).join('.');
+    }
+    // si brandName provisto, usar; si no, tomar el dominio sin TLD simple
+    const brand = brandName ? brandName : (parts.length ? parts[parts.length-2] : host);
+    return { hostname: host, registered_domain: registered, brand_name: brand };
+  }catch(e){
+    return { hostname: domain, registered_domain: domain, brand_name: brandName || domain };
+  }
+}
+
+
+const PHISH_SYNONYMS = {
+  "acceso": ["accesos","login","ingreso","signin","entrada"],
+  "cliente": ["clientes","usuario","usuarios","cuenta","accounts"],
+  "gestion": ["gestiones","soporte","admin","manager","control"],
+  "alerta": ["alertas","aviso","avisos","notificacion","incidencia","urgencia"],
+  "inicio": ["login","acceso","portal","ingreso","start"],
+  "validacion": ["verificacion","update","check","confirmacion","verify"],
+};
+
+const HOMOGLYPHS = {
+  'o': ['0','ó','ο'],
+  'i': ['1','l','í','ı'],
+  'a': ['@','á'],
+  'e': ['3','é'],
+  's': ['5','$'],
+  'c': ['с'],
+};
+
+const COMMON_AFFIXES = ["login","secure","verify","auth","signin","accounts","portal","update","confirm","access","acceso","acceder"];
+const COMMON_SUBDOMAINS = ["login","secure","verify","auth","signin","accounts","portal","m","mobile","www"];
+const COMMON_TLDS = ["com","net","info","org","online","site","es","app","xyz"];
+
+const LANG_KEYWORDS = {
+  'es': {
+    "kw_login": '"iniciar sesión" OR "acceder"', "kw_password": '"contraseña"',
+    "kw_confidential": '"confidencial" OR "uso interno"', "kw_invoice": '"factura"',
+    "kw_support": '"soporte técnico"', "kw_jobs": '"vacantes" OR "empleo"',
+    "kw_scam_report": '"es una estafa" OR "cuenta falsa"',
+  },
+  'en': {
+    "kw_login": '"sign in" OR "login"', "kw_password": '"password"',
+    "kw_confidential": '"confidential" OR "internal use only"', "kw_invoice": '"invoice"',
+    "kw_support": '"technical support"', "kw_jobs": '"vacancies" OR "jobs"',
+    "kw_scam_report": '"is a scam" OR "fake account"',
+  },
+};
+
+const DORK_TEMPLATES = {
+  '🎣 Phishing y Kits de Suplantación': [
+    'intitle:"{brand_name} | {kw_login}" OR intitle:"Acción Requerida: {brand_name}"',
+    '"{brand_name}" AROUND(15) ("username" OR "password" OR "usuario" OR "{kw_password}")',
+    'inurl:"{brand_name}" filetype:php intext:"email" intext:"password" (inurl:login OR inurl:post OR inurl:send)',
+    'filetype:zip inurl:"{brand_name}" (intext:login.php OR intext:index.html)',
+    'intext:"<form" intext:"action=" intext:"password" intext:"{brand_name}" filetype:html',
+  ],
+  '🎯 Caza de Scams y Promociones Falsas': [
+    '"{brand_name}" AROUND(15) ("concurso" OR "sorteo" OR "gratis" OR "premio" OR "gana")',
+    'intext:"Felicidades, has ganado" OR "Congratulations, you won" intext:"{brand_name}"',
+    '"{brand_name}" AROUND(10) ("oferta por tiempo limitado" OR "solo por hoy" OR "descuento exclusivo")',
+    'intext:"colaboración oficial con {brand_name}" OR "official partner of {brand_name}"',
+    'inurl:"{brand_name}" after:{one_month_ago}',
+  ],
+  '📞 Estafas de Soporte Técnico y Desinformación': [
+    '"{brand_name}" AROUND(20) ("{kw_support}" OR "ayuda telefónica") AND ("problema con mi cuenta" OR "{kw_invoice}" OR "no puedo acceder")',
+    'intitle:"{brand_name} Soporte" intext:"número de teléfono" OR intext:"llame ahora"',
+    'site:quora.com OR site:reddit.com "{brand_name}" ("problema" OR "estafa" OR "ayuda")',
+    'site:youtube.com intitle:"{brand_name}" ("solucionar error" OR "configurar cuenta")',
+    'site:medium.com OR site:blogspot.com "{brand_name}" "opinión" OR "problema"',
+  ],
+  ' G Abuso de Servicios de Google (Alta Confianza para Phishing)': [
+    'site:sites.google.com/view/ intext:"{brand_name}" AND ({kw_login} OR {kw_support} OR "verificación")',
+    'site:docs.google.com/forms/ intext:"{brand_name}" AND ("{kw_password}" OR "datos personales" OR "verificar identidad")',
+    'site:drive.google.com intext:"{brand_name}" "index of"',
+    'site:colab.research.google.com filetype:ipynb "{brand_name}" ("api_key" OR "password")',
+    'site:datastudio.google.com OR site:lookerstudio.google.com intext:"{brand_name}" intitle:"Informe"',
+  ],
+  '💼 Inteligencia Corporativa y Fugas de RRHH': [
+    'filetype:pdf "{brand_name}" ("recursos humanos" OR "organigrama" OR "evaluación de desempeño")',
+    '"{brand_name}" AROUND(25) ("informe financiero" OR "resultados trimestrales") "{kw_confidential}"',
+    'intitle:"Únete a {brand_name}" OR "Trabaja en {brand_name}" intext:"envía tu CV"',
+    'filetype:xls OR filetype:xlsx intext:"{brand_name}" intext:"salarios" OR intext:"nómina"',
+    'filetype:pptx OR filetype:pdf "{brand_name}" ("plan estratégico" OR "roadmap" OR "análisis de la competencia")',
+  ],
+  '☁️ Exposición en la Nube e Infraestructura': [
+    'site:s3.amazonaws.com "{brand_name}" OR "{registered_domain}"',
+    'site:blob.core.windows.net "{brand_name}" OR "{registered_domain}"',
+    'site:storage.googleapis.com "{brand_name}" OR "{registered_domain}"',
+    'inurl:postman.com/collections/ intext:"{brand_name}"',
+    'intext:"Swagger UI" intitle:"{brand_name}" OR inurl:swagger',
+  ],
+  '🎭 Suplantación en Redes Sociales y Anuncios Falsos': [
+    'site:twitter.com OR site:facebook.com OR site:instagram.com "{brand_name}" AND "{kw_support}" {social_exclusions}',
+    'site:linkedin.com OR site:facebook.com "{brand_name}" AND "{kw_jobs}" {social_exclusions}',
+    'site:twitter.com OR site:reddit.com ("@{brand_name}" OR "{brand_name}") AND ({kw_scam_report})',
+    'site:facebook.com/groups/ intext:"{brand_name}"',
+    'site:linkedin.com/in/ intitle:"{brand_name}"',
+  ],
+  'GHDB - Files Containing Usernames': [
+    '"START test_database" ext:log','"Header for logs at time" ext:log','intitle:"index of" "/usernames"',
+    'intext:"-----BEGIN CERTIFICATE-----" ext:txt','intitle:"index of" "contacts.txt"',
+    'intitle:"index of" "db.properties" | "db.properties.BAK"','intitle:"index of" "credentials.xml" | "credentials.inc" | "credentials.txt"',
+    '\'dsn: mysql:host=localhost;dbname=\' ext:yml | ext:txt "password:"','jdbc:sqlserver://localhost:1433 + username + password ext:yml | ext:java',
+    'intitle:"index of" "password.yml"','intitle:"index of" "sitemanager.xml" | "recentservers.xml"','intitle:"index of" "filezilla.xml"',
+    '"DefaultPassword" ext:reg "[HKEY_LOCAL_MACHINESOFTWAREMicrosoftWindows NTCurrentVersionWinlogon]"',
+    'filetype:csv intext:"Secret access key"','inurl:user intitle:index of ext:sql | xls | xml | json | csv',
+    'jdbc:mysql://localhost:3306/ + username + password ext:yml | ext:java -git -gitlab','intitle:"index of" "/parameters.yml*"',
+    '"CREATE ROLE" + "ENCRYPTED PASSWORD" ext:sql | ext:txt | ext:ini -git -gitlab','File contains Sensitive Information',
+    'intitle:"index of" "users.frm"','intitle:index.of "users.db"','"username.xlsx" ext:xlsx',
+    'inurl:/_layouts/mobile/view.aspx?List=','"authentication failure; logname=" ext:log','inurl:/profile.php?lookup=1',
+    'intext:"root:x:0:0:root:/root:/bin/bash" inurl:*=/etc/passwd','inurl:"/root/etc/passwd" intext:"home/*:"',
+    'site:extremetracking.com inurl:"login="','intext:"SteamUserPassphrase=" intext:"SteamAppUser=" -"username" -"user"',
+    'inurl:root.asp?acs=anon','filetype:conf inurl:proftpd.conf -sample','filetype:log username putty',
+    'filetype:reg reg +intext:"internet account manager"','filetype:reg reg HKEY_CURRENT_USER username',
+    '+intext:"webalizer" +intext:"Total Usernames" +intext:"Usage Statistics for"', 'inurl:php inurl:hlstats intext:"Server Username"',
+    'index.of perform.ini','"index of" / lck','inurl:admin inurl:userlist','inurl:admin filetype:asp inurl:userlist',
+    'intitle:index.of .bash_history','intitle:index.of .sh_history'
+  ]
+};
+
+/* ---------- Generadores de variantes (typos / homoglyphs / afijos) ---------- */
+
+function simpleTypos(src){
+  const s = src;
+  const out = new Set();
+  // omission
+  for(let i=0;i<s.length;i++) out.add(s.slice(0,i) + s.slice(i+1));
+  // duplicated char
+  for(let i=0;i<s.length;i++) out.add(s.slice(0,i) + s[i] + s.slice(i));
+  // transposition
+  for(let i=0;i<s.length-1;i++){ let arr = s.split(''); [arr[i],arr[i+1]]=[arr[i+1],arr[i]]; out.add(arr.join('')); }
+  // insertion dash/dot
+  for(let i=0;i<=s.length;i++){ out.add(s.slice(0,i)+'-'+s.slice(i)); out.add(s.slice(0,i)+'.'+s.slice(i)); }
+  // numeric suffixes
+  for(const n of [1,2,24,2024]) out.add(s + n);
+  out.delete(s);
+  return Array.from(out).slice(0,200);
+}
+
+function homoglyphVariants(src, maxVariants=200){
+  const slots = [];
+  for(const ch of src){
+    const opts = [ch];
+    const low = ch.toLowerCase();
+    if(HOMOGLYPHS[low]) opts.push(...HOMOGLYPHS[low]);
+    // dedupe keep order
+    const seen = []; for(const o of opts) if(!seen.includes(o)) seen.push(o);
+    slots.push(seen);
+  }
+  let variants = [''];
+  for(const opts of slots){
+    const nw = [];
+    for(const base of variants){
+      for(const o of opts){
+        nw.push(base + o);
+        if(nw.length >= maxVariants) break;
+      }
+      if(nw.length >= maxVariants) break;
+    }
+    variants = nw;
+    if(variants.length >= maxVariants) break;
+  }
+  return variants.filter(v=>v && v !== src).slice(0,maxVariants);
+}
+
+function generateBrandVariants(brand, level=1, limit=120){
+  if(!brand) return [];
+  const b = brand.toLowerCase().replace(/\s+/g,'');
+  const baseSet = new Set([b]);
+  if(level >= 1){
+    for(const t of simpleTypos(b)) baseSet.add(t);
+    for(const aff of COMMON_AFFIXES){
+      baseSet.add(aff + b); baseSet.add(b + aff); baseSet.add(aff + '-' + b); baseSet.add(b + '-' + aff);
+    }
+  }
+  if(level >= 2){
+    for(const h of homoglyphVariants(b,300)) baseSet.add(h);
+  }
+  if(level >= 3){
+    for(let i=0;i<b.length;i++) baseSet.add(b.slice(0,i) + b[i] + b.slice(i));
+    for(const n of [2023,2024,24]) baseSet.add(b + n);
+  }
+  // generate subdomain combos
+  const sdSet = new Set();
+  const candidates = Array.from(baseSet).sort((a,b2)=> (a.length - b2.length) || a.localeCompare(b2)).slice(0,40);
+  for(const v of candidates){
+    for(const sub of COMMON_SUBDOMAINS){
+      for(const tld of COMMON_TLDS){
+        sdSet.add(`${sub}.${v}.${tld}`);
+        sdSet.add(`${v}.${sub}.${tld}`);
+        sdSet.add(`${v}-${sub}.${tld}`);
+        sdSet.add(`${sub}-${v}.${tld}`);
+      }
+    }
+  }
+  const all = Array.from(new Set([...baseSet, ...sdSet])).sort((a,b2)=> (a.length - b2.length) || a.localeCompare(b2));
+  const final = [];
+  for(const it of all){
+    if(it.length > 200) continue;
+    final.push(it);
+    if(final.length >= limit) break;
+  }
+  return final;
+}
+
+/* ---------- Sinónimos (dominios de phishing con pares) ---------- */
+
+function generateSynonymDomains(brand, synonyms, level=1, limit=40, maxWordLen=12){
+  if(level === 0 || !brand) return [];
+  const b = brand.toLowerCase().replace(/\s+/g,'');
+  const out = new Set();
+  let words = Object.keys(synonyms);
+  const commonWhitelist = new Set(["acceso","cliente","gestion","alerta","validacion"]);
+  if(level === 1) words = words.filter(w => commonWhitelist.has(w));
+  for(const w1 of words){
+    for(const w2 of words){
+      if(w1 === w2) continue;
+      const w1v = [w1].concat(synonyms[w1] || []);
+      const w2v = [w2].concat(synonyms[w2] || []);
+      for(const v1 of w1v) for(const v2 of w2v){
+        if(v1.length > maxWordLen || v2.length > maxWordLen) continue;
+        out.add(`${b}.${v1}-${v2}.com`); out.add(`${b}-${v1}-${v2}.com`);
+      }
+    }
+  }
+  return Array.from(out).sort((a,b)=> (a.length-b.length)|| a.localeCompare(b)).slice(0,limit);
+}
+
+/* ---------- Plausibility filter ---------- */
+
+function isPlausibleVariant(v, forSynonyms=false){
+  const maxLen = forSynonyms ? 40 : 20;
+  if(typeof v !== 'string') return false;
+  return v.length >=3 && v.length <= maxLen && !v.startsWith('-') && !v.startsWith('.') && !v.endsWith('-') && !v.endsWith('.');
+}
+
+function formatTemplate(tpl, dict){
+  return tpl.replace(/\{([^}]+)\}/g, (m, key) => {
+    return dict.hasOwnProperty(key) ? dict[key] : m;
+  });
+}
+
+function generateDorksForDomain(domainInfo, exclusions=[], lang='es', socialAccounts=[], typoLevel=1, synonymLevel=1){
+  const dorks = [];
+  const oneMonthAgo = (() => {
+    const d = new Date(); d.setDate(d.getDate()-30);
+    return d.toISOString().split('T')[0];
+  })();
+  const currentYear = (new Date()).getFullYear();
+  const keywords = LANG_KEYWORDS[lang] || LANG_KEYWORDS['es'];
+  const socialExclusions = socialAccounts.map(acc=>` -inurl:"/${acc}"`).join('');
+
+  // 1) plantillas
+  for(const [category, templates] of Object.entries(DORK_TEMPLATES)){
+    for(const tpl of templates){
+      const formatDict = Object.assign({}, domainInfo, keywords, { one_month_ago: oneMonthAgo, current_year: currentYear, social_exclusions: socialExclusions });
+      let dorkText = formatTemplate(tpl, formatDict);
+      const catLower = category.toLowerCase();
+      if(catLower.includes('ghdb') && domainInfo.brand_name){
+        const brand = domainInfo.brand_name;
+        if(!dorkText.toLowerCase().includes(brand.toLowerCase()) && !(/site:|inurl:/i.test(dorkText))){
+          dorkText = `"${brand}" AROUND(8) ${dorkText}`;
+        }
+      }
+      let finalDork = dorkText;
+      if(!(/site:|inurl:/i.test(finalDork))){
+        finalDork += ` -site:${domainInfo.registered_domain}`;
+      }
+      finalDork += exclusions.map(e=>` -site:${e}`).join('');
+      dorks.push([category, finalDork.replace(/\s+/g,' ').trim()]);
+    }
+  }
+
+  // 2) variantes de marca
+  const brand = domainInfo.brand_name || '';
+  const registered = domainInfo.registered_domain || '';
+  const brandVariants = generateBrandVariants(brand, typoLevel, 60);
+
+  const plainVariants = brandVariants.filter(v=>!v.includes('.') && isPlausibleVariant(v)).slice(0,10);
+  const domainVariants = brandVariants.filter(v=>v.includes('.') && isPlausibleVariant(v)).slice(0,15);
+
+  const brandVariantsOr = plainVariants.length ? "(" + plainVariants.map(v=>`"${v}"`).join(" OR ") + ")" : `"${brand}"`;
+
+  const extraCat = '🎣 Variantes de Marca y Subdominios';
+  const seen = new Set();
+
+  // A) plain
+  for(const pv of plainVariants.slice(0,20)){
+    const d = `("${brand}" OR ${brandVariantsOr}) AROUND(8) ("login" OR "signin" OR "acceso" OR "iniciar sesión" OR "password") -site:${registered}`;
+    const key = d.toLowerCase();
+    if(!seen.has(key)){ seen.add(key); dorks.push([extraCat, d]); }
+  }
+
+  // B) domain-like
+  for(const dv of domainVariants.slice(0,30)){
+    const d = `inurl:"${dv}" ("${brand}" OR ${brandVariantsOr}) (login OR "acceso" OR "iniciar sesión" OR password) -site:${registered}`;
+    const key = d.toLowerCase();
+    if(!seen.has(key)){ seen.add(key); dorks.push([extraCat, d]); }
+  }
+
+  // C) subdomain combos
+
+// C) subdomain combos
+  for(const sub of COMMON_SUBDOMAINS){
+    if(registered){
+      const d1 = `inurl:"${sub}.${registered}" ("${brand}" OR ${brandVariantsOr}) (login OR password OR acceso) -site:${registered}`;
+      if(!seen.has(d1.toLowerCase())){ seen.add(d1.toLowerCase()); dorks.push([extraCat, d1]); }
+    }
+    const d2 = `inurl:"${brand}.${sub}" ("${brand}" OR ${brandVariantsOr}) (login OR password OR acceso) -site:${registered}`;
+    if(!seen.has(d2.toLowerCase())){ seen.add(d2.toLowerCase()); dorks.push([extraCat, d2]); }
+    const d3 = `inurl:"${brand}-${sub}" ("${brand}" OR ${brandVariantsOr}) (login OR password OR acceso) -site:${registered}`;
+    if(!seen.has(d3.toLowerCase())){ seen.add(d3.toLowerCase()); dorks.push([extraCat, d3]); }
+  }
+
+
+  // sinónimos
+  const rawSyn = generateSynonymDomains(brand, PHISH_SYNONYMS, synonymLevel, 40);
+  const synDomains = rawSyn.filter(sd => isPlausibleVariant(sd, true));
+  for(const sd of synDomains){
+    const d = `inurl:"${sd}" ("${brand}" OR "${brand.toLowerCase()}") (login OR acceso OR password OR verificacion)`;
+    dorks.push(['🎣 Variantes con Sinónimos', d]);
+  }
+
+  return dorks;
+}
+
+/* ---------- UI Rendering ---------- */
+
+function renderHtmlReport(domainInfo, dorks){
+  const grouped = {};
+  // initialize from DORK_TEMPLATES to have consistent order
+  for(const cat of Object.keys(DORK_TEMPLATES)) grouped[cat] = [];
+  // collect others dynamically
+  for(const [cat, dork] of dorks){
+    if(!grouped.hasOwnProperty(cat)) grouped[cat] = [];
+    grouped[cat].push(dork);
+  }
+
+  // build accordion
+  let html = `<div class="accordion" id="dorksAccordion">`;
+  let idx = 0;
+  for(const [category, list] of Object.entries(grouped)){
+    if(!list || list.length===0) { idx++; continue; }
+    html += `
+      <div class="accordion-item mb-2">
+        <h2 class="accordion-header" id="heading${idx}">
+          <button class="accordion-button collapsed fw-bold bg-transparent text-start" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#collapse${idx}" aria-expanded="false" aria-controls="collapse${idx}">
+            ${category} <span class="ms-2 text-info">▼</span>
+          </button>
+        </h2>
+        <div id="collapse${idx}" class="accordion-collapse collapse" aria-labelledby="heading${idx}" data-bs-parent="#dorksAccordion">
+          <div class="accordion-body">
+            <ul class="list-group list-group-flush">
+    `;
+    for(const d of list){
+      const url = `https://www.google.com/search?q=${quotePlus(d)}`;
+      html += `<li class="list-group-item d-flex justify-content-between align-items-center"><code class="text-wrap">${escapeHtml(d)}</code><a class="btn btn-sm btn-outline-info" href="${url}" target="_blank">🔎</a></li>`;
+    }
+    html += `</ul></div></div></div>`;
+    idx++;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function escapeHtml(s){
+  return (s+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ---------- Form handlers ---------- */
+
+document.getElementById('dorkForm').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  const domain = document.getElementById('domain').value.trim();
+  const brand = document.getElementById('brand').value.trim();
+  const lang = document.getElementById('lang').value;
+  const typoLevel = parseInt(document.getElementById('typoLevel').value,10);
+  const synLevel = parseInt(document.getElementById('synLevel').value,10);
+  const exclusionsRaw = document.getElementById('exclusions').value.trim();
+  const socialsRaw = document.getElementById('socials').value.trim();
+
+  const exclusions = exclusionsRaw ? exclusionsRaw.split(/\s+/).filter(Boolean) : [];
+  const socials = socialsRaw ? socialsRaw.split(/\s+/).filter(Boolean) : [];
+
+  const domainInfo = getDomainInfo(domain, brand || null);
+  domainInfo.brand_name = brand || domainInfo.brand_name;
+
+  const dorks = generateDorksForDomain(domainInfo, exclusions, lang, socials, typoLevel, synLevel);
+
+  const out = document.getElementById('outputArea');
+  out.innerHTML = `
+    <div class="mb-2 small-muted top-note">Dominio: <b>${escapeHtml(domainInfo.hostname)}</b> · Registered: <b>${escapeHtml(domainInfo.registered_domain)}</b> · Brand: <b>${escapeHtml(domainInfo.brand_name)}</b></div>
+    ${renderHtmlReport(domainInfo, dorks)}
+  `;
+  // scroll into view
+  out.scrollIntoView({ behavior:'smooth' });
+});
+
+// clear button
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  document.getElementById('dorkForm').reset();
+  document.getElementById('outputArea').innerHTML = '';
+});
+
+// download current report as HTML
+document.getElementById('downloadHtml').addEventListener('click', ()=>{
+  const out = document.getElementById('outputArea');
+  if(!out.innerHTML.trim()){ alert('Genera el reporte antes de descargar.'); return; }
+  const fullHtml = `<!doctype html><html><head><meta charset="utf-8"><title>Reporte Dorks</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"></head><body style="background:#071021;color:#e6eef8;padding:16px;"><h2>Reporte Dorks</h2><div>${out.innerHTML}</div></body></html>`;
+  const blob = new Blob([fullHtml], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'dorks_report.html'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+});
+
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
