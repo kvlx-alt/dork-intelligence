@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="es">
 <head>
@@ -86,11 +85,27 @@
         <input id="socials" class="form-control" placeholder="ej. tusitio tusitio_oficial">
       </div>
 
+
       <div class="col-12 d-flex gap-2">
         <button id="generateBtn" class="btn btn-primary">Generar dorks</button>
         <button id="clearBtn" type="button" class="btn btn-ghost">Limpiar</button>
         <div class="ms-auto small-muted align-self-center">Click en 🔎 abre Google en nueva pestaña</div>
       </div>
+
+      <div class="col-12 mt-2">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="" id="wideModeCheckbox">
+          <label class="form-check-label small-muted" for="wideModeCheckbox">
+          buscar APKs / markets no oficiales
+          </label>
+        </div>
+      </div>
+
+      <div class="col-12 mt-2" id="packageField" style="display:none;">
+        <label class="form-label">Package name (si lo conoces)</label>
+        <input id="packageName" class="form-control" placeholder="ej. com.ejemplo.app">
+      </div>
+
     </form>
   </div>
 
@@ -101,6 +116,12 @@
 
 function quotePlus(s){ return encodeURIComponent(s); }
 
+function makePackageLike(brand){
+  if(!brand) return "";
+  const s = brand.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+            .toLowerCase().replace(/[^a-z0-9]+/g,'');
+  return s ? `com.${s}` : "";
+}
 function getDomainInfo(domain, brandName=null){
   // Heurística mejorada para extraer registered_domain y brand_name.
   // - Si el TLD es ccTLD (último label con longitud 2, p.ej. "ru", "uk"),
@@ -145,7 +166,7 @@ function getDomainInfo(domain, brandName=null){
     // si el usuario pasó brandName explícito, respetarlo
     const effectiveBrand = brandName ? brandName : brand;
 
-    return { hostname: host, registered_domain: registered, brand_name: effectiveBrand };
+    return { hostname: host, registered_domain: registered, brand_name: effectiveBrand, package_like: makePackageLike(effectiveBrand) };
   }catch(e){
     return { hostname: domain, registered_domain: domain, brand_name: brandName || domain };
   }
@@ -197,6 +218,29 @@ const DORK_TEMPLATES = {
     'inurl:"{brand_name}" filetype:php intext:"email" intext:"password" (inurl:login OR inurl:post OR inurl:send)',
     'filetype:zip inurl:"{brand_name}" (intext:login.php OR intext:index.html)',
     'intext:"<form" intext:"action=" intext:"password" intext:"{brand_name}" filetype:html',
+  ],
+
+  '📱 Apps Fraudulentas': [
+    // Búsqueda amplia por APKs / descargas (no limitar por site:)
+    'filetype:apk "{brand_name}" -site:play.google.com -site:apple.com',
+    'inurl:apk "{brand_name}" -site:play.google.com -site:apple.com',
+    'intitle:"{brand_name}" intitle:apk -site:play.google.com -site:apple.com',
+    // términos que suelen aparecer con apps no oficiales: mod/crack/premium/unlocked
+    '"{brand_name}" (apk OR "apk download" OR descargar) (mod OR cracked OR "premium unlocked" OR "full version") -site:play.google.com -site:apple.com',
+    // Buscar nombres de paquete aproximados (package_like) y variantes con punto
+    '"{package_like}" OR "{package_like}." ("apk" OR "download" OR "instalar") -site:play.google.com -site:apple.com',
+    // Archivos .apk alojados en filehosts comunes (ejemplo de hosts; no obligatorios)
+    'site:mega.nz "{brand_name}" apk OR site:mediafire.com "{brand_name}" apk OR site:drive.google.com "{brand_name}" apk -site:play.google.com',
+    // Incluir "release.apk", "signed.apk", "download.apk" que suelen indicar paquete listo
+    '"release.apk" "{brand_name}" OR "signed.apk" "{brand_name}" -site:play.google.com',
+    // Buscar reseñas / avisos de "fake" / "malware" asociados a la app
+    '"{brand_name}" (apk OR aplicación) ("falso" OR "fake" OR "fraude" OR "malware" OR "malicioso") -site:play.google.com -site:apple.com',
+    // Buscar uploads o forks en repos (puede detectar forks con binarios)
+    'site:github.com "{brand_name}" "release.apk" OR "release" "{package_like}" -site:play.google.com',
+    // Detectar páginas que sirven un instalador/web-installer
+    'intext:"install apk" OR intext:"descargar apk" "{brand_name}" -site:play.google.com -site:apple.com',
+    // Buscar nombres de paquetes combinados con palabras técnicas (sha1, sha256, fingerprint)
+    '"{package_like}" (sha256 OR sha1 OR fingerprint) "{brand_name}" -site:play.google.com'
   ],
   '🎯 Caza de Scams y Promociones Falsas': [
     '"{brand_name}" AROUND(15) ("concurso" OR "sorteo" OR "gratis" OR "premio" OR "gana")',
@@ -384,7 +428,11 @@ function formatTemplate(tpl, dict){
   });
 }
 
-function generateDorksForDomain(domainInfo, exclusions=[], lang='es', socialAccounts=[], typoLevel=1, synonymLevel=1){
+function generateDorksForDomain(domainInfo, exclusions=[], lang='es', socialAccounts=[], typoLevel=1, synonymLevel=1, wideMode=false){
+  const templates = Object.assign({}, DORK_TEMPLATES);
+  if(!wideMode){
+    delete templates['📱 Apps Fraudulentas (búsqueda amplia — NO limitar a markets)'];
+  }
   const dorks = [];
   const oneMonthAgo = (() => {
     const d = new Date(); d.setDate(d.getDate()-30);
@@ -395,8 +443,8 @@ function generateDorksForDomain(domainInfo, exclusions=[], lang='es', socialAcco
   const socialExclusions = socialAccounts.map(acc=>` -inurl:"/${acc}"`).join('');
 
   // 1) plantillas
-  for(const [category, templates] of Object.entries(DORK_TEMPLATES)){
-    for(const tpl of templates){
+  for(const [category, templatesList] of Object.entries(templates)){
+    for(const tpl of templatesList){
       const formatDict = Object.assign({}, domainInfo, keywords, { one_month_ago: oneMonthAgo, current_year: currentYear, social_exclusions: socialExclusions });
       let dorkText = formatTemplate(tpl, formatDict);
       const catLower = category.toLowerCase();
@@ -512,10 +560,21 @@ function escapeHtml(s){
   return (s+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-/* ---------- Form handlers ---------- */
+const wideModeCheckbox = document.getElementById("wideModeCheckbox");
+const packageField = document.getElementById("packageField");
+
+if (wideModeCheckbox && packageField) {
+  wideModeCheckbox.addEventListener("change", () => {
+    packageField.style.display = wideModeCheckbox.checked ? "block" : "none";
+  });
+}
 
 document.getElementById('dorkForm').addEventListener('submit', function(ev){
   ev.preventDefault();
+
+  // leer checkbox una sola vez
+  const wideMode = document.getElementById("wideModeCheckbox")?.checked || false;
+
   const domain = document.getElementById('domain').value.trim();
   const brand = document.getElementById('brand').value.trim();
   const lang = document.getElementById('lang').value;
@@ -527,19 +586,32 @@ document.getElementById('dorkForm').addEventListener('submit', function(ev){
   const exclusions = exclusionsRaw ? exclusionsRaw.split(/\s+/).filter(Boolean) : [];
   const socials = socialsRaw ? socialsRaw.split(/\s+/).filter(Boolean) : [];
 
+
   const domainInfo = getDomainInfo(domain, brand || null);
   domainInfo.brand_name = brand || domainInfo.brand_name;
 
-  const dorks = generateDorksForDomain(domainInfo, exclusions, lang, socials, typoLevel, synLevel);
+  // --- leer packageName si el usuario lo introdujo y sobrescribir package_like ---
+  const packageInput = (document.getElementById('packageName')?.value || '').trim();
+  if (packageInput) {
+    // si el usuario introdujo un package explícito lo usamos tal cual
+    domainInfo.package_like = packageInput;
+  } else {
+    // si no hay input, asegúrate de tener un fallback generado (ya lo hace getDomainInfo)
+    domainInfo.package_like = domainInfo.package_like || makePackageLike(domainInfo.brand_name || '');
+  }
+
+
+  // usar la variable ya declarada
+  const dorks = generateDorksForDomain(domainInfo, exclusions, lang, socials, typoLevel, synLevel, wideMode);
 
   const out = document.getElementById('outputArea');
   out.innerHTML = `
     <div class="mb-2 small-muted top-note">Dominio: <b>${escapeHtml(domainInfo.hostname)}</b> · Registered: <b>${escapeHtml(domainInfo.registered_domain)}</b> · Brand: <b>${escapeHtml(domainInfo.brand_name)}</b></div>
     ${renderHtmlReport(domainInfo, dorks)}
   `;
-  // scroll into view
   out.scrollIntoView({ behavior:'smooth' });
 });
+
 
 // clear button
 document.getElementById('clearBtn').addEventListener('click', ()=>{
@@ -552,5 +624,4 @@ document.getElementById('clearBtn').addEventListener('click', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
 
