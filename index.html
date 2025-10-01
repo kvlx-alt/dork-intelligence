@@ -101,6 +101,25 @@
         </div>
       </div>
 
+
+      <div class="col-12 mt-2">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="githubModeCheckbox">
+          <label class="form-check-label small-muted" for="githubModeCheckbox">
+            Buscar resultados en GitHub (repos, issues, commits, code)
+          </label>
+        </div>
+      </div>
+
+      <div class="col-12 mt-1 ms-4">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="emailsOnlyCheckbox">
+          <label class="form-check-label small-muted" for="emailsOnlyCheckbox">
+            Extraer solo direcciones de correo electrónico
+          </label>
+        </div>
+      </div>
+
       <div class="col-12 mt-2" id="packageField" style="display:none;">
         <label class="form-label">Package name (si lo conoces)</label>
         <input id="packageName" class="form-control" placeholder="ej. com.ejemplo.app">
@@ -569,7 +588,8 @@ if (wideModeCheckbox && packageField) {
   });
 }
 
-document.getElementById('dorkForm').addEventListener('submit', function(ev){
+
+document.getElementById('dorkForm').addEventListener('submit', async function(ev){
   ev.preventDefault();
 
   // leer checkbox una sola vez
@@ -586,32 +606,57 @@ document.getElementById('dorkForm').addEventListener('submit', function(ev){
   const exclusions = exclusionsRaw ? exclusionsRaw.split(/\s+/).filter(Boolean) : [];
   const socials = socialsRaw ? socialsRaw.split(/\s+/).filter(Boolean) : [];
 
-
   const domainInfo = getDomainInfo(domain, brand || null);
   domainInfo.brand_name = brand || domainInfo.brand_name;
 
   // --- leer packageName si el usuario lo introdujo y sobrescribir package_like ---
   const packageInput = (document.getElementById('packageName')?.value || '').trim();
   if (packageInput) {
-    // si el usuario introdujo un package explícito lo usamos tal cual
     domainInfo.package_like = packageInput;
   } else {
-    // si no hay input, asegúrate de tener un fallback generado (ya lo hace getDomainInfo)
     domainInfo.package_like = domainInfo.package_like || makePackageLike(domainInfo.brand_name || '');
   }
 
-
-  // usar la variable ya declarada
+  // generar dorks
   const dorks = generateDorksForDomain(domainInfo, exclusions, lang, socials, typoLevel, synLevel, wideMode);
 
   const out = document.getElementById('outputArea');
   out.innerHTML = `
-    <div class="mb-2 small-muted top-note">Dominio: <b>${escapeHtml(domainInfo.hostname)}</b> · Registered: <b>${escapeHtml(domainInfo.registered_domain)}</b> · Brand: <b>${escapeHtml(domainInfo.brand_name)}</b></div>
+    <div class="mb-2 small-muted top-note">
+      Dominio: <b>${escapeHtml(domainInfo.hostname)}</b> · 
+      Registered: <b>${escapeHtml(domainInfo.registered_domain)}</b> · 
+      Brand: <b>${escapeHtml(domainInfo.brand_name)}</b>
+    </div>
     ${renderHtmlReport(domainInfo, dorks)}
   `;
+
+
+  // --- GitHub Worker Integration ---
+  const githubCheckbox = document.getElementById("githubModeCheckbox");
+  const emailsOnlyCheckbox = document.getElementById("emailsOnlyCheckbox");
+
+  if (githubCheckbox && githubCheckbox.checked) {
+    try {
+      const res = await fetch("https://gitsearch-worker.gitsearch.workers.dev", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          terms: [domainInfo.registered_domain],
+          emails_only: emailsOnlyCheckbox?.checked || false,
+          max_results: 10
+        })
+      });
+      const gitHtml = await res.text();
+      out.innerHTML += `<div class="mt-4">${gitHtml}</div>`;
+    } catch (e) {
+      out.innerHTML += `<div class="alert alert-danger mt-3">
+        ⚠️ Error al consultar GitHub Worker: ${escapeHtml(e.message)}
+      </div>`;
+    }
+  }
+
   out.scrollIntoView({ behavior:'smooth' });
 });
-
 
 // clear button
 document.getElementById('clearBtn').addEventListener('click', ()=>{
@@ -624,4 +669,3 @@ document.getElementById('clearBtn').addEventListener('click', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
