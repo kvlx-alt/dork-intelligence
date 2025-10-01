@@ -1,4 +1,5 @@
-<!doctype html>
+
+<!doctype html> 
 <html lang="es">
 <head>
 <meta charset="utf-8" />
@@ -116,6 +117,16 @@
           <input class="form-check-input" type="checkbox" id="emailsOnlyCheckbox">
           <label class="form-check-label small-muted" for="emailsOnlyCheckbox">
             Extraer solo direcciones de correo electrónico
+          </label>
+        </div>
+      </div>
+
+      <!-- NEW: checkbox para extraer secrets (API keys, tokens, passwords) -->
+      <div class="col-12 mt-1 ms-4">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="secretsCheckbox">
+          <label class="form-check-label small-muted" for="secretsCheckbox">
+            Extraer API keys / tokens / passwords (GitHub)
           </label>
         </div>
       </div>
@@ -240,25 +251,11 @@ const DORK_TEMPLATES = {
   ],
 
   '📱 Apps Fraudulentas': [
-    // Búsqueda amplia por APKs / descargas (no limitar por site:)
     'filetype:apk "{brand_name}" -site:play.google.com -site:apple.com',
     'inurl:apk "{brand_name}" -site:play.google.com -site:apple.com',
     'intitle:"{brand_name}" intitle:apk -site:play.google.com -site:apple.com',
-    // términos que suelen aparecer con apps no oficiales: mod/crack/premium/unlocked
     '"{brand_name}" (apk OR "apk download" OR descargar) (mod OR cracked OR "premium unlocked" OR "full version") -site:play.google.com -site:apple.com',
-    // Buscar nombres de paquete aproximados (package_like) y variantes con punto
     '"{package_like}" OR "{package_like}." ("apk" OR "download" OR "instalar") -site:play.google.com -site:apple.com',
-    // Archivos .apk alojados en filehosts comunes (ejemplo de hosts; no obligatorios)
-    'site:mega.nz "{brand_name}" apk OR site:mediafire.com "{brand_name}" apk OR site:drive.google.com "{brand_name}" apk -site:play.google.com',
-    // Incluir "release.apk", "signed.apk", "download.apk" que suelen indicar paquete listo
-    '"release.apk" "{brand_name}" OR "signed.apk" "{brand_name}" -site:play.google.com',
-    // Buscar reseñas / avisos de "fake" / "malware" asociados a la app
-    '"{brand_name}" (apk OR aplicación) ("falso" OR "fake" OR "fraude" OR "malware" OR "malicioso") -site:play.google.com -site:apple.com',
-    // Buscar uploads o forks en repos (puede detectar forks con binarios)
-    'site:github.com "{brand_name}" "release.apk" OR "release" "{package_like}" -site:play.google.com',
-    // Detectar páginas que sirven un instalador/web-installer
-    'intext:"install apk" OR intext:"descargar apk" "{brand_name}" -site:play.google.com -site:apple.com',
-    // Buscar nombres de paquetes combinados con palabras técnicas (sha1, sha256, fingerprint)
     '"{package_like}" (sha256 OR sha1 OR fingerprint) "{brand_name}" -site:play.google.com'
   ],
   '🎯 Caza de Scams y Promociones Falsas': [
@@ -318,9 +315,6 @@ const DORK_TEMPLATES = {
     'intext:"root:x:0:0:root:/root:/bin/bash" inurl:*=/etc/passwd','inurl:"/root/etc/passwd" intext:"home/*:"',
     'site:extremetracking.com inurl:"login="','intext:"SteamUserPassphrase=" intext:"SteamAppUser=" -"username" -"user"',
     'inurl:root.asp?acs=anon','filetype:conf inurl:proftpd.conf -sample','filetype:log username putty',
-    'filetype:reg reg +intext:"internet account manager"','filetype:reg reg HKEY_CURRENT_USER username',
-    '+intext:"webalizer" +intext:"Total Usernames" +intext:"Usage Statistics for"', 'inurl:php inurl:hlstats intext:"Server Username"',
-    'index.of perform.ini','"index of" / lck','inurl:admin inurl:userlist','inurl:admin filetype:asp inurl:userlist',
     'intitle:index.of .bash_history','intitle:index.of .sh_history'
   ]
 };
@@ -510,8 +504,6 @@ function generateDorksForDomain(domainInfo, exclusions=[], lang='es', socialAcco
   }
 
   // C) subdomain combos
-
-// C) subdomain combos
   for(const sub of COMMON_SUBDOMAINS){
     if(registered){
       const d1 = `inurl:"${sub}.${registered}" ("${brand}" OR ${brandVariantsOr}) (login OR password OR acceso) -site:${registered}`;
@@ -522,7 +514,6 @@ function generateDorksForDomain(domainInfo, exclusions=[], lang='es', socialAcco
     const d3 = `inurl:"${brand}-${sub}" ("${brand}" OR ${brandVariantsOr}) (login OR password OR acceso) -site:${registered}`;
     if(!seen.has(d3.toLowerCase())){ seen.add(d3.toLowerCase()); dorks.push([extraCat, d3]); }
   }
-
 
   // sinónimos
   const rawSyn = generateSynonymDomains(brand, PHISH_SYNONYMS, synonymLevel, 40);
@@ -634,16 +625,32 @@ document.getElementById('dorkForm').addEventListener('submit', async function(ev
   // --- GitHub Worker Integration ---
   const githubCheckbox = document.getElementById("githubModeCheckbox");
   const emailsOnlyCheckbox = document.getElementById("emailsOnlyCheckbox");
+  const secretsCheckbox = document.getElementById("secretsCheckbox");
 
   if (githubCheckbox && githubCheckbox.checked) {
     try {
+      // construir lista de términos: registered_domain, brand, variantes (limitado)
+      const termsSet = new Set();
+      termsSet.add(domainInfo.registered_domain);
+      if (domainInfo.brand_name) termsSet.add(domainInfo.brand_name);
+      // generar variantes (usar typoLevel reducido para la búsqueda en GitHub)
+      try {
+        const brandVars = generateBrandVariants(domainInfo.brand_name || '', Math.max(1, Math.min(typoLevel,2)), 5);
+        for (const v of brandVars) termsSet.add(v);
+      } catch(e) {
+        // ignore
+      }
+
+      const terms = Array.from(termsSet).slice(0,10); // limitar para no sobrecargar tokens
+
       const res = await fetch("https://gitsearch-worker.gitsearch.workers.dev", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          terms: [domainInfo.registered_domain],
+          terms: terms,
           emails_only: emailsOnlyCheckbox?.checked || false,
-          max_results: 10
+          secrets_only: secretsCheckbox?.checked || false,
+          max_results: 50
         })
       });
       const gitHtml = await res.text();
