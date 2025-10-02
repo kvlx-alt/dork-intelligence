@@ -89,6 +89,70 @@
     font-size: 0.8rem;
     color: #80e0ff;
   }
+
+
+
+/* ---------- Email badges / highlights (pegar en <style>) ---------- */
+
+/* badge que aparece junto al título del grupo */
+.email-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  line-height: 1;
+  border: 1px solid rgba(102,178,255,0.18);
+  background: linear-gradient(180deg, rgba(17,40,60,0.55), rgba(8,18,28,0.35));
+  color: #cfeeff;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+  white-space: nowrap;
+}
+
+/* variante secundaria para +N */
+.email-badge.btn-outline-secondary {
+  border-color: rgba(200,200,200,0.06);
+  color: #bcd7ff;
+  background: rgba(255,255,255,0.01);
+}
+
+/* hover / foco */
+.email-badge:hover,
+.email-badge:focus {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(8,20,40,0.45);
+  background: linear-gradient(180deg, rgba(28,78,120,0.32), rgba(6,12,20,0.36));
+  color: #eaf8ff;
+}
+
+/* pequeño remate para los emails dentro de la lista (resaltados) */
+.email-highlight {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(100,170,255,0.06);
+  border: 1px solid rgba(102,178,255,0.06);
+  color: #bfe7ff;
+  font-weight:600;
+  font-size:0.85rem;
+  margin-right:6px;
+}
+
+/* asegurar espaciado entre título del grupo y badges */
+.accordion-header.d-flex.align-items-center.justify-content-between .email-badge,
+.accordion-header.d-flex.align-items-center.justify-content-between .d-flex > .email-badge {
+  margin-left: 10px;
+}
+
+/* responsive: en pantallas pequeñas agrupar / hacer scroll horizontal */
+@media (max-width:640px){
+  .d-flex.align-items-center.ms-2 { overflow-x:auto; gap:6px; }
+  .email-badge { flex: 0 0 auto; margin-right:6px; }
+}
+
 </style>
 </head>
 <body>
