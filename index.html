@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Dork Intelligence - kvzlx</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
 <style>
   body { background:#0f1720; color:#e6eef8; }
   .card, .accordion-item { background:#0b1220; border-color:#16202b; }
@@ -22,14 +23,72 @@
   a.dork-link { color:#66b2ff; text-decoration:none; }
   a.dork-link:hover { text-decoration:underline; }
   .top-note { color:#9fc9ff; }
-    /* Cambiar color de los títulos de cada categoría */
-.accordion-button {
-  color: #4db6ff !important;   /* azul claro */
-}
-    .accordion-button:not(.collapsed) {
-  background-color: #122438;   /* fondo más oscuro */
-  color: #80e0ff !important;   /* cian */
-}
+
+  /* Cambiar color de los títulos de cada categoría */
+  .accordion-button {
+    color: #4db6ff !important;   /* azul claro */
+  }
+  .accordion-button:not(.collapsed) {
+    background-color: #122438;   /* fondo más oscuro */
+    color: #80e0ff !important;   /* cian */
+  }
+
+  /* --- GitHub Results Styling --- */
+  .github-source-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-top: 0.75rem;
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #9fc9ff; /* azul claro */
+  }
+
+  .github-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Colores por tipo de fuente */
+  .github-badge.commits { background: #1e3a8a; color: #bcd7ff; }
+  .github-badge.code    { background: #065f46; color: #a7f3d0; }
+  .github-badge.issues  { background: #7f1d1d; color: #fecaca; }
+  .github-badge.repo    { background: #78350f; color: #fde68a; }
+
+  /* Items de lista */
+  .list-group-item {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    transition: background 0.2s;
+  }
+  .list-group-item:hover {
+    background: #1e293b;
+  }
+
+  /* Acordeón interno */
+  .accordion .accordion-item {
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .accordion-button.small {
+    font-size: 0.85rem;
+    padding: 6px 12px;
+    background: #0b1220;
+    color: #80e0ff;
+  }
+  .accordion-button.small::after {
+    font-size: 0.8rem;
+    color: #80e0ff;
+  }
 </style>
 </head>
 <body>
@@ -108,25 +167,6 @@
           <input class="form-check-input" type="checkbox" id="githubModeCheckbox">
           <label class="form-check-label small-muted" for="githubModeCheckbox">
             Buscar resultados en GitHub (repos, issues, commits, code)
-          </label>
-        </div>
-      </div>
-
-      <div class="col-12 mt-1 ms-4">
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" id="emailsOnlyCheckbox">
-          <label class="form-check-label small-muted" for="emailsOnlyCheckbox">
-            Extraer solo direcciones de correo electrónico
-          </label>
-        </div>
-      </div>
-
-      <!-- NEW: checkbox para extraer secrets (API keys, tokens, passwords) -->
-      <div class="col-12 mt-1 ms-4">
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" id="secretsCheckbox">
-          <label class="form-check-label small-muted" for="secretsCheckbox">
-            Extraer API keys / tokens / passwords (GitHub)
           </label>
         </div>
       </div>
@@ -579,7 +619,6 @@ if (wideModeCheckbox && packageField) {
   });
 }
 
-
 document.getElementById('dorkForm').addEventListener('submit', async function(ev){
   ev.preventDefault();
 
@@ -621,35 +660,15 @@ document.getElementById('dorkForm').addEventListener('submit', async function(ev
     ${renderHtmlReport(domainInfo, dorks)}
   `;
 
-
   // --- GitHub Worker Integration ---
   const githubCheckbox = document.getElementById("githubModeCheckbox");
-  const emailsOnlyCheckbox = document.getElementById("emailsOnlyCheckbox");
-  const secretsCheckbox = document.getElementById("secretsCheckbox");
-
   if (githubCheckbox && githubCheckbox.checked) {
     try {
-      // construir lista de términos: registered_domain, brand, variantes (limitado)
-      const termsSet = new Set();
-      termsSet.add(domainInfo.registered_domain);
-      if (domainInfo.brand_name) termsSet.add(domainInfo.brand_name);
-      // generar variantes (usar typoLevel reducido para la búsqueda en GitHub)
-      try {
-        const brandVars = generateBrandVariants(domainInfo.brand_name || '', Math.max(1, Math.min(typoLevel,2)), 5);
-        for (const v of brandVars) termsSet.add(v);
-      } catch(e) {
-        // ignore
-      }
-
-      const terms = Array.from(termsSet).slice(0,10); // limitar para no sobrecargar tokens
-
       const res = await fetch("https://gitsearch-worker.gitsearch.workers.dev", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          terms: terms,
-          emails_only: emailsOnlyCheckbox?.checked || false,
-          secrets_only: secretsCheckbox?.checked || false,
+          terms: [domainInfo.registered_domain],
           max_results: 50
         })
       });
