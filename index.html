@@ -1,4 +1,3 @@
-
 <!doctype html> 
 <html lang="es">
 <head>
@@ -233,13 +232,6 @@
             Buscar resultados en GitHub (repos, issues, commits, code)
           </label>
         </div>
-      </div>
-
-      <div class="form-check form-switch mt-2">
-        <input class="form-check-input" type="checkbox" id="shodanModeCheckbox" checked>
-        <label class="form-check-label" for="shodanModeCheckbox">
-          Buscar exposición en Shodan
-        </label>
       </div>
 
       <div class="col-12 mt-2" id="packageField" style="display:none;">
@@ -732,33 +724,25 @@ document.getElementById('dorkForm').addEventListener('submit', async function(ev
   `;
 
   // --- GitHub Worker Integration ---
-// --- GitHub + Shodan Worker Integration ---
-const githubCheckbox = document.getElementById("githubModeCheckbox");
-const shodanCheckbox = document.getElementById("shodanModeCheckbox");
-
-const promises = [];
-
-if (githubCheckbox.checked) {
-  promises.push(fetch("https://gitsearch-worker.gitsearch.workers.dev", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ terms: [domainInfo.registered_domain], max_results: 50 })
-  }).then(r=>r.text()).then(html => 
-    out.innerHTML += `<div class="mt-4"><h3>🐙 GitHub Results</h3>${html}</div>`));
-}
-
-if (shodanCheckbox.checked) {
-  promises.push(fetch("https://gitsearch-worker.gitsearch.workers.dev", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ terms: [domainInfo.registered_domain], shodan: true })
-  }).then(r=>r.text()).then(html => 
-    out.innerHTML += `<div class="mt-4"><h3>🛰️ Shodan Results</h3>${html}</div>`));
-}
-
-
-await Promise.allSettled(promises);
-
+  const githubCheckbox = document.getElementById("githubModeCheckbox");
+  if (githubCheckbox && githubCheckbox.checked) {
+    try {
+      const res = await fetch("https://gitsearch-worker.gitsearch.workers.dev", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          terms: [domainInfo.registered_domain],
+          max_results: 50
+        })
+      });
+      const gitHtml = await res.text();
+      out.innerHTML += `<div class="mt-4">${gitHtml}</div>`;
+    } catch (e) {
+      out.innerHTML += `<div class="alert alert-danger mt-3">
+        ⚠️ Error al consultar GitHub Worker: ${escapeHtml(e.message)}
+      </div>`;
+    }
+  }
 
   out.scrollIntoView({ behavior:'smooth' });
 });
@@ -774,6 +758,3 @@ document.getElementById('clearBtn').addEventListener('click', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
-
-
