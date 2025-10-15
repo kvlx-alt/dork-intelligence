@@ -743,7 +743,8 @@ if (githubCheckbox.checked) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ terms: [domainInfo.registered_domain], max_results: 50 })
-  }).then(r=>r.text()).then(html => out.innerHTML += `<div class="mt-4">${html}</div>`));
+  }).then(r=>r.text()).then(html => 
+    out.innerHTML += `<div class="mt-4"><h3>🐙 GitHub Results</h3>${html}</div>`));
 }
 
 if (shodanCheckbox.checked) {
@@ -751,8 +752,10 @@ if (shodanCheckbox.checked) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ terms: [domainInfo.registered_domain], shodan: true })
-  }).then(r=>r.text()).then(html => out.innerHTML += `<div class="mt-4">${html}</div>`));
+  }).then(r=>r.text()).then(html => 
+    out.innerHTML += `<div class="mt-4"><h3>🛰️ Shodan Results</h3>${html}</div>`));
 }
+
 
 await Promise.allSettled(promises);
 
@@ -771,5 +774,6 @@ document.getElementById('clearBtn').addEventListener('click', ()=>{
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
 
 
